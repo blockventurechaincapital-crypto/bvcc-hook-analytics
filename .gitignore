@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+indexer/node_modules/
+
+# SQLite database (generated data, can be large)
+indexer/bvcc_indexer.db
+indexer/bvcc_indexer.db-shm
+indexer/bvcc_indexer.db-wal
+
+# Token logo cache (auto-regenerated on startup)
+token_logos.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Uploads folder
+uploads/
+
+# Claude Code session files
+.claude/
+CLAUDE.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

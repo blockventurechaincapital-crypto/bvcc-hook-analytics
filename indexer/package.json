@@ -1,0 +1,16 @@
+{
+  "name": "bvcc-indexer",
+  "version": "1.0.0",
+  "description": "BSC Uniswap v4 hook indexer for BVCC Dynamic Fee Hook",
+  "type": "commonjs",
+  "main": "indexer.cjs",
+  "scripts": {
+    "start": "node indexer.cjs",
+    "index": "node indexer.cjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "dotenv": "^16.4.5",
+    "ethers": "^5.7.2"
+  }
+}

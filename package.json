@@ -1,0 +1,15 @@
+{
+  "name": "bvcc-hook-analytics",
+  "version": "1.0.0",
+  "description": "BVCC Uniswap v4 Hook Analytics Server — 4-chain dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "scan": "node -e \"require('./scanner').runScan().then(d=>console.log('Scan done:',d.pools.length,'pools,',d.swaps.length,'swaps, isLiveData:',d.isLiveData)).catch(console.error)\""
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^5.7.2",
+    "express": "^4.18.2"
+  }
+}

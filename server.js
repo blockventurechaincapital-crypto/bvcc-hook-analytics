@@ -484,7 +484,7 @@ app.use('/assets', express.static(path.join(__dirname, 'assets')));
 /* ══════════════════════════════════════════
    STARTUP
 ══════════════════════════════════════════ */
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`[server] BVCC Hook Analytics → http://localhost:${PORT}`);
   console.log(`[server] DB: ${DB_PATH}`);
 

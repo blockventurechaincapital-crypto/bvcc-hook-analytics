@@ -204,6 +204,7 @@ async function fetchFeeEvents(chainKey, cfg, provider, fromBlock, toBlock) {
       if (failed <= 3) {
         console.error(`  [${chainKey}] getLogs chunk ${from}-${to} failed: ${e.message.slice(0, 120)}`);
       }
+      break; // stop loop — retry from last saved position on next cycle
     }
 
     await sleep(chunkDelay);

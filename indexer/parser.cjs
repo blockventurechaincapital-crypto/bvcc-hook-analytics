@@ -98,11 +98,9 @@ async function discoverTokens(provider, receipt, hookAddress, poolManager) {
 
   let candidates = erc20s.filter(t => pmRelated.has(t.address));
 
-  // Step 4: fallback — use all ERC20s sorted by address (Uniswap v4 ordering: token0 < token1)
-  if (candidates.length < 2) {
-    candidates = erc20s.slice().sort((a, b) => a.address.localeCompare(b.address));
-  }
-
+  // If fewer than 2 PM-related tokens found, do not guess — return null.
+  // The pool will remain undiscovered until a cleaner tx comes along.
+  // Using a broad fallback risks picking up unrelated ERC20s from complex txs (e.g. routers).
   if (candidates.length < 2) return null;
 
   candidates.sort((a, b) => a.address.localeCompare(b.address));

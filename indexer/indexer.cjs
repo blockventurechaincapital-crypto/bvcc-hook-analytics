@@ -197,15 +197,14 @@ async function fetchFeeEvents(chainKey, cfg, provider, fromBlock, toBlock) {
           }
         }
       }
+      // Save progress only on success — failed chunks will be retried next cycle
+      setState(stateKey, String(to));
     } catch (e) {
       failed++;
       if (failed <= 3) {
         console.error(`  [${chainKey}] getLogs chunk ${from}-${to} failed: ${e.message.slice(0, 120)}`);
       }
     }
-
-    // Save progress after every chunk — safe to Ctrl+C anytime
-    setState(stateKey, String(to));
 
     await sleep(chunkDelay);
   }

@@ -556,8 +556,8 @@ footer{border-top:1px solid var(--line);padding:40px 0 28px;position:relative;z-
             <div class="panel-sub" id="chart-sub" data-i18n="chart-swap-sub">Daily swap count — all chains combined</div>
           </div>
           <div class="range-tabs">
-            <button class="range-tab active" onclick="setRange(7,this)">7D</button>
-            <button class="range-tab" onclick="setRange(30,this)">30D</button>
+            <button class="range-tab" onclick="setRange(7,this)">7D</button>
+            <button class="range-tab active" onclick="setRange(30,this)">30D</button>
             <button class="range-tab" onclick="setRange('all',this)">All</button>
           </div>
         </div>
@@ -607,10 +607,10 @@ footer{border-top:1px solid var(--line);padding:40px 0 28px;position:relative;z-
         </div>
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
           <div style="display:flex;gap:4px;flex-wrap:wrap" id="swap-time-tabs">
-            <button class="swap-ttab active" data-range="1" onclick="setSwapTimeRange(1)">1H</button>
+            <button class="swap-ttab" data-range="1" onclick="setSwapTimeRange(1)">1H</button>
             <button class="swap-ttab" data-range="6" onclick="setSwapTimeRange(6)">6H</button>
             <button class="swap-ttab" data-range="24" onclick="setSwapTimeRange(24)">24H</button>
-            <button class="swap-ttab" data-range="168" onclick="setSwapTimeRange(168)">7D</button>
+            <button class="swap-ttab active" data-range="168" onclick="setSwapTimeRange(168)">7D</button>
             <button class="swap-ttab" data-range="0" onclick="setSwapTimeRange(0)">All</button>
           </div>
           <div id="recent-swaps-badge" class="badge bg-green"><span class="bdot"></span><span>Live</span></div>
@@ -846,8 +846,8 @@ let isLiveData=false;
 let scanCancelled=false;
 let selectedChain='all';
 let poolSearch='';
-let currentRange=7;
-let swapTimeRange=1; // hours; 0 = all
+let currentRange=30;
+let swapTimeRange=168; // hours; 0 = all
 let volChart=null, chainChart=null, botChart=null, feeChart=null;
 let activityLog=[];
 
@@ -1329,7 +1329,7 @@ function setChartMobTab(i){
   document.querySelectorAll('.cmob-tab').forEach((b,j)=>b.classList.toggle('active',j===i));
   setTimeout(()=>{const ch=MOB_CHART_REFS[i]();if(ch)ch.resize();},20);
 }
-function setSwapTimeRange(h){swapTimeRange=h;document.querySelectorAll('.swap-ttab').forEach(b=>b.classList.toggle('active',+b.dataset.range===h));renderRecentSwaps();}
+function setSwapTimeRange(h){swapTimeRange=h;document.querySelectorAll('#swap-time-tabs .swap-ttab').forEach(b=>b.classList.toggle('active',+b.dataset.range===h));renderRecentSwaps();}
 
 function exportSwapsCSV(){
   const nowE=Date.now();

@@ -1,6 +1,7 @@
 'use strict';
 require('dotenv').config();
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const { ethers } = require('./indexer/node_modules/ethers');
@@ -287,6 +288,22 @@ function getDb() {
   }
   return db;
 }
+
+/* ══════════════════════════════════════════
+   RATE LIMITING
+   Behind Cloudflare — trust CF-Connecting-IP forwarded by Apache as X-Forwarded-For
+══════════════════════════════════════════ */
+app.set('trust proxy', 1); // trust first proxy (Apache → Express)
+
+const apiLimiter = rateLimit({
+  windowMs: 60_000,       // 1 minute window
+  max: 30,                // 30 requests per minute per IP
+  standardHeaders: true,  // Return rate limit info in RateLimit-* headers
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down.' },
+});
+
+app.use('/api/', apiLimiter);
 
 /* ══════════════════════════════════════════
    ROUTES

@@ -6,6 +6,10 @@
 [![Uniswap v4](https://img.shields.io/badge/Uniswap-v4-ff007a)](https://github.com/Uniswap/v4-core)
 [![Chains](https://img.shields.io/badge/Chains-ARB%20%7C%20BNB%20%7C%20Base%20%7C%20ETH-blue)](#deployed-contracts)
 
+## Demo
+
+[![BVCC Hook Analytics — Demo](https://img.youtube.com/vi/Qs8FqDtkue0/maxresdefault.jpg)](https://youtu.be/Qs8FqDtkue0)
+
 ---
 
 ## What is the BVCC Hook?

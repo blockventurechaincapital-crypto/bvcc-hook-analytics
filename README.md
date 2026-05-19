@@ -239,10 +239,29 @@ bvcc-hook-analytics/
     ├── indexer.cjs             ← continuous 4-chain indexer
     ├── parser.cjs              ← receipt parser (FeeCalculated + Swap)
     ├── db.cjs                  ← SQLite schema + helpers
+    ├── reindex-ml-pool.cjs     ← maintenance: re-index ModifyLiquidity for one pool
     └── package.json
 ```
 
 > `bvcc_indexer.db` and `token_logos.json` are generated at runtime and excluded from the repository.
+
+---
+
+## Maintenance
+
+### Re-indexing LP positions for a pool
+
+If a pool shows incorrect TVL (e.g. after an RPC outage caused missed `ModifyLiquidity` events), use `reindex-ml-pool.cjs` to re-fetch all LP events for that pool from the deploy block without touching other pools:
+
+```bash
+cd indexer
+node reindex-ml-pool.cjs <chain> <poolId>
+
+# Example — re-index WBNB/AAVE on BNB Chain:
+node reindex-ml-pool.cjs bsc 0x085182518e82062e732fcb912becdf7140b42f8da31c7afd850db3c6d4309c8a
+```
+
+The script deletes existing position rows for that pool only, then replays every `ModifyLiquidity` event from the deploy block to the current block. Chunks that fail are retried indefinitely with exponential backoff — no events are skipped. The indexer can keep running in parallel during execution.
 
 ---
 

@@ -3,7 +3,7 @@
 
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const { ethers } = require('ethers');
-const { getState, setState, poolExists, insertPool, insertSwap } = require('./db.cjs');
+const { db, getState, setState, poolExists, insertPool, insertSwap, applyLiquidityDelta } = require('./db.cjs');
 const { FEE_TOPIC, parseReceipt, discoverTokens, sqrtToPrice, resolveSwapDirection } = require('./parser.cjs');
 
 const splitRpcs = (env, defaults) => env ? env.split(',').map(s => s.trim()).filter(Boolean) : defaults;
@@ -67,6 +67,12 @@ const CHAINS = {
     chunkDelay:  300,
   },
 };
+
+// ModifyLiquidity event — PoolManager emits this for every LP add/remove
+const ML_TOPIC = ethers.utils.id('ModifyLiquidity(bytes32,address,int24,int24,int256,bytes32)');
+const ML_IFACE = new ethers.utils.Interface([
+  'event ModifyLiquidity(bytes32 indexed id, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bytes32 salt)',
+]);
 
 const POLL_INTERVAL_MS = 60_000; // 1 minute between polls per chain
 // ─────────────────────────────────────────────────────────────────────────────
@@ -214,6 +220,62 @@ async function fetchFeeEvents(chainKey, cfg, provider, fromBlock, toBlock) {
 }
 
 /**
+ * Fetch ModifyLiquidity logs from PoolManager for known pools.
+ * Builds/updates the positions table so server.js can compute accurate TVL.
+ */
+async function fetchMLEvents(chainKey, cfg, provider, fromBlock, toBlock) {
+  const poolIds = db.prepare('SELECT poolId FROM pools WHERE chain = ?').all(chainKey).map(r => r.poolId);
+  if (!poolIds.length) {
+    setState(`last_ml_block_${chainKey}`, String(toBlock));
+    return;
+  }
+
+  const { chunkSize, chunkDelay } = cfg;
+  let failed = 0;
+
+  for (let from = fromBlock; from <= toBlock; from += chunkSize) {
+    const to = Math.min(from + chunkSize - 1, toBlock);
+    try {
+      let totalLogs = 0;
+      for (const poolId of poolIds) {
+        const logs = await provider.getLogs({
+          address: cfg.poolManager,
+          topics:  [ML_TOPIC, poolId],   // exact match per pool — more reliable than OR array
+          fromBlock: from,
+          toBlock:   to,
+        });
+        for (const log of logs) {
+          try {
+            const { args } = ML_IFACE.parseLog(log);
+            applyLiquidityDelta(
+              chainKey,
+              args.id.toLowerCase(),
+              args.sender.toLowerCase(),
+              args.tickLower,
+              args.tickUpper,
+              args.salt,
+              args.liquidityDelta.toString(),
+            );
+          } catch (e) {
+            console.error(`  [${chainKey}] ML parse error: ${e.message.slice(0, 80)}`);
+          }
+        }
+        totalLogs += logs.length;
+      }
+
+      if (totalLogs) console.log(`  [${chainKey}] ML ${from}-${to}: ${totalLogs} LP events`);
+      setState(`last_ml_block_${chainKey}`, String(to));
+    } catch (e) {
+      failed++;
+      if (failed <= 3) console.error(`  [${chainKey}] ML getLogs ${from}-${to}: ${e.message.slice(0, 100)}`);
+      break; // stop loop — retry from last saved position on next cycle
+    }
+
+    await sleep(chunkDelay);
+  }
+}
+
+/**
  * Main polling loop for one chain. Runs forever.
  * On each cycle, resolves a working RPC — falls back through the list automatically.
  */
@@ -249,6 +311,13 @@ async function runChain(chainKey) {
       }
 
       const events = await fetchFeeEvents(chainKey, cfg, provider, fromBlock, currentBlock);
+
+      // Scan ModifyLiquidity events for accurate TVL (separate progress tracker)
+      const mlLastBlock = parseInt(getState(`last_ml_block_${chainKey}`) || String(cfg.deployBlock - 1));
+      const mlFromBlock  = mlLastBlock + 1;
+      if (mlFromBlock <= currentBlock) {
+        await fetchMLEvents(chainKey, cfg, provider, mlFromBlock, currentBlock);
+      }
 
       if (isBackfill) {
         console.log(`[${chainKey}] Backfill complete up to block ${currentBlock.toLocaleString()} — ${events.length} events`);

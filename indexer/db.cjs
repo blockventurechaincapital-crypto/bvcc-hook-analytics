@@ -54,6 +54,17 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS positions (
+    chain      TEXT    NOT NULL,
+    poolId     TEXT    NOT NULL,
+    owner      TEXT    NOT NULL,
+    tickLower  INTEGER NOT NULL,
+    tickUpper  INTEGER NOT NULL,
+    liquidity  TEXT    NOT NULL,
+    salt       TEXT    NOT NULL,
+    UNIQUE(chain, poolId, owner, tickLower, tickUpper, salt)
+  );
 `);
 
 // Migration: if swaps table was created with old UNIQUE(chain, txHash),
@@ -131,4 +142,22 @@ function poolExists(chain, poolId) { return !!stmts.getPool.get(chain, poolId); 
 function insertPool(pool)      { stmts.insertPool.run(pool); }
 function insertSwap(swap)      { stmts.insertSwap.run(swap); }
 
-module.exports = { db, getState, setState, poolExists, insertPool, insertSwap };
+const _getPos = db.prepare('SELECT liquidity FROM positions WHERE chain=? AND poolId=? AND owner=? AND tickLower=? AND tickUpper=? AND salt=?');
+const _upsPos = db.prepare('INSERT INTO positions (chain,poolId,owner,tickLower,tickUpper,liquidity,salt) VALUES (?,?,?,?,?,?,?) ON CONFLICT(chain,poolId,owner,tickLower,tickUpper,salt) DO UPDATE SET liquidity=excluded.liquidity');
+const _delPos = db.prepare('DELETE FROM positions WHERE chain=? AND poolId=? AND owner=? AND tickLower=? AND tickUpper=? AND salt=?');
+const _allPos = db.prepare('SELECT * FROM positions WHERE chain=? AND poolId=?');
+
+function applyLiquidityDelta(chain, poolId, owner, tickLower, tickUpper, salt, liquidityDelta) {
+  const row  = _getPos.get(chain, poolId, owner, tickLower, tickUpper, salt);
+  const cur  = BigInt(row?.liquidity ?? '0');
+  const newL = cur + BigInt(liquidityDelta);
+  if (newL <= 0n) {
+    _delPos.run(chain, poolId, owner, tickLower, tickUpper, salt);
+  } else {
+    _upsPos.run(chain, poolId, owner, tickLower, tickUpper, newL.toString(), salt);
+  }
+}
+
+function getPositions(chain, poolId) { return _allPos.all(chain, poolId); }
+
+module.exports = { db, getState, setState, poolExists, insertPool, insertSwap, applyLiquidityDelta, getPositions };

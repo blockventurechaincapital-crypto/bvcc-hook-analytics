@@ -175,11 +175,68 @@ function tokenUsdPrice(symbol, amount, prices) {
 }
 
 /**
- * Compute approximate pool TVL from Uniswap v4 active liquidity math.
- * Uses: L (uint128 liquidity), price (token1/token0 human units), decimals.
- * Formula: amount0 = L / (√rawPrice × 10^d0)
- *          amount1 = L × √rawPrice / 10^d1
- * where rawPrice = priceHuman × 10^d1 / 10^d0
+ * sqrt(1.0001^tick) — normalized sqrtPrice (same scale as sqrtPriceX96 / 2^96).
+ */
+function sqrtAtTick(tick) {
+  return Math.sqrt(Math.pow(1.0001, tick));
+}
+
+/**
+ * Compute pool TVL from actual LP positions (positions table).
+ * Handles in-range and out-of-range positions correctly.
+ */
+function computePoolTVLFromPositions(pool, positions, sqrtPriceX96, prices) {
+  if (!positions?.length || !sqrtPriceX96) return null;
+
+  const sqrtP = Number(BigInt(sqrtPriceX96.toString()) * 1_000_000n / (2n ** 96n)) / 1_000_000;
+  if (!sqrtP || !isFinite(sqrtP)) return null;
+
+  const d0 = pool.token0_decimals || 18;
+  const d1 = pool.token1_decimals || 18;
+  const scale0 = Math.pow(10, d0);
+  const scale1 = Math.pow(10, d1);
+
+  let total0 = 0, total1 = 0;
+
+  for (const pos of positions) {
+    const L = parseFloat(pos.liquidity);
+    if (!L || L <= 0) continue;
+
+    const sqrtLower = sqrtAtTick(pos.tickLower);
+    const sqrtUpper = sqrtAtTick(pos.tickUpper);
+
+    if (sqrtP <= sqrtLower) {
+      // Below range: 100% token0
+      total0 += L * (1 / sqrtLower - 1 / sqrtUpper) / scale0;
+    } else if (sqrtP >= sqrtUpper) {
+      // Above range: 100% token1
+      total1 += L * (sqrtUpper - sqrtLower) / scale1;
+    } else {
+      // In range: both tokens
+      total0 += L * (1 / sqrtP - 1 / sqrtUpper) / scale0;
+      total1 += L * (sqrtP - sqrtLower) / scale1;
+    }
+  }
+
+  if (!isFinite(total0) || !isFinite(total1)) return null;
+
+  let usd0 = tokenUsdPrice(pool.token0_symbol, total0, prices);
+  let usd1 = tokenUsdPrice(pool.token1_symbol, total1, prices);
+
+  // Derive unknown token price from pool spot price
+  const priceHuman = sqrtP * sqrtP * scale0 / scale1;
+  if (usd0 == null && usd1 != null && total1 > 0) {
+    usd0 = total0 * (usd1 / total1) * priceHuman;
+  } else if (usd1 == null && usd0 != null && total0 > 0) {
+    usd1 = total1 * (usd0 / total0) / priceHuman;
+  }
+
+  const tvlUsd = (usd0 != null && usd1 != null) ? usd0 + usd1 : null;
+  return { amount0: total0, amount1: total1, sym0: pool.token0_symbol, sym1: pool.token1_symbol, tvlUsd };
+}
+
+/**
+ * Fallback TVL from virtual reserves (when positions table is empty).
  */
 function computePoolTVL(pool, latestSwap, prices) {
   if (!latestSwap?.liquidity || !latestSwap?.price) return null;
@@ -200,15 +257,10 @@ function computePoolTVL(pool, latestSwap, prices) {
   let usd0 = tokenUsdPrice(pool.token0_symbol, amount0, prices);
   let usd1 = tokenUsdPrice(pool.token1_symbol, amount1, prices);
 
-  // Derive unknown token price from pool ratio + known token price
   if (usd0 == null && usd1 != null && amount1 > 0) {
-    const p1PerUnit = usd1 / amount1;               // USD per 1 token1
-    const p0PerUnit = p1PerUnit * priceHuman;        // USD per 1 token0 (price = t1/t0)
-    usd0 = amount0 * p0PerUnit;
+    usd0 = amount0 * (usd1 / amount1) * priceHuman;
   } else if (usd1 == null && usd0 != null && amount0 > 0) {
-    const p0PerUnit = usd0 / amount0;               // USD per 1 token0
-    const p1PerUnit = p0PerUnit / priceHuman;        // USD per 1 token1
-    usd1 = amount1 * p1PerUnit;
+    usd1 = amount1 * (usd0 / amount0) / priceHuman;
   }
 
   let tvlUsd = null;
@@ -381,13 +433,15 @@ async function buildPayload() {
         }
       }
 
-      // TVL from live on-chain PoolManager state (current sqrtPrice + liquidity)
-      const onChain = await fetchPoolState(p.chain, p.poolId);
-      const liveSnap = onChain ? {
-        liquidity: onChain.liquidity,
-        price: sqrtPriceX96ToPrice(onChain.sqrtPriceX96, p.token0_decimals || 18, p.token1_decimals || 18),
-      } : null;
-      const tvl = computePoolTVL(p, liveSnap, prices);
+      // TVL — prefer actual positions (accurate) over virtual reserves fallback
+      const onChain   = await fetchPoolState(p.chain, p.poolId);
+      const positions = db.prepare('SELECT * FROM positions WHERE chain=? AND poolId=?').all(p.chain, p.poolId);
+      const tvl = (positions.length > 0 && onChain)
+        ? computePoolTVLFromPositions(p, positions, onChain.sqrtPriceX96, prices)
+        : computePoolTVL(p, onChain ? {
+            liquidity: onChain.liquidity,
+            price: sqrtPriceX96ToPrice(onChain.sqrtPriceX96, p.token0_decimals || 18, p.token1_decimals || 18),
+          } : null, prices);
 
       // Token logos — resolved sequentially to avoid CoinGecko rate limiting on startup
       const logoUri0 = await resolveTokenLogo(p.token0_address, p.chain, p.token0_symbol);
